@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 
 from app.models import ReportListResponse, ReportPublic, ReportStatus
-from app.reports import query
+from app.reports import query, render_reports_csv
 
 app = FastAPI(title="SDD Workshop — Reports API", version="0.1.0")
 
@@ -26,12 +26,16 @@ def list_reports(
     descending: bool = Query(True, description="Sort descending"),
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=200),
-) -> ReportListResponse:
+    format: str = Query("json", description="Response format"),
+) -> ReportListResponse | Response:
     """Return a paginated list of reports.
 
     Public fields only — `internal_id` and `owner_email` are stripped via
     `ReportPublic.from_internal`.
     """
+
+    if format not in {"json", "csv"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported format: {format!r}")
 
     try:
         rows = query(
@@ -45,6 +49,11 @@ def list_reports(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     page = rows[offset : offset + limit]
+
+    if format == "csv":
+        csv_body = render_reports_csv(page)
+        return Response(content=csv_body, media_type="text/csv")
+
     return ReportListResponse(
         items=[ReportPublic.from_internal(r) for r in page],
         total=len(rows),

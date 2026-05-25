@@ -1,0 +1,3 @@
+change: add-csv-export
+status: proposal
+summary: Add CSV export support for /reports

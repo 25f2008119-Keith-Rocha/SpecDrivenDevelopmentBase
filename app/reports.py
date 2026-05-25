@@ -8,12 +8,31 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Iterable
+import csv
+import io
 
 from app.data import all_reports
-from app.models import Report, ReportStatus
+from app.models import Report, ReportPublic, ReportStatus
 
 
 _SORTABLE_FIELDS = {"id", "title", "status", "owner", "amount", "created_at"}
+
+
+def render_reports_csv(rows: Iterable[Report]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(["id", "title", "status", "owner", "amount", "created_at"])
+    for report in rows:
+        public = ReportPublic.from_internal(report)
+        writer.writerow([
+            public.id,
+            public.title,
+            public.status,
+            public.owner,
+            public.amount,
+            public.created_at.isoformat(),
+        ])
+    return buffer.getvalue()
 
 
 def query(
