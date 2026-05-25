@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 
 from app.models import ReportListResponse, ReportPublic, ReportStatus
 from app.reports import query
@@ -50,4 +53,43 @@ def list_reports(
         total=len(rows),
         offset=offset,
         limit=limit,
+    )
+
+
+@app.get("/reports/export")
+def export_reports(
+    status: ReportStatus | None = Query(None, description="Filter by status"),
+    date_from: datetime | None = Query(None, description="Lower bound on created_at (inclusive)"),
+    date_to: datetime | None = Query(None, description="Upper bound on created_at (inclusive)"),
+    sort: str = Query("created_at", description="Sort field"),
+    descending: bool = Query(True, description="Sort descending"),
+) -> StreamingResponse:
+    """Export filtered reports as CSV."""
+
+    try:
+        rows = query(
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            sort=sort,
+            descending=descending,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=["id", "title", "status", "owner", "amount", "created_at"],
+    )
+    writer.writeheader()
+    for report in rows:
+        public_report = ReportPublic.from_internal(report)
+        writer.writerow(public_report.model_dump(mode="json"))
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=reports.csv"},
     )
